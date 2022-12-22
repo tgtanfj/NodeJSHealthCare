@@ -1,5 +1,8 @@
-import e from 'cors'
 import db from '../models/index'
+require('dotenv').config()
+import _ from 'lodash';
+
+const MAX_NUMBER_SCHEDULE = process.env.MAX_NUMBER_SCHEDULE
 
 let getTopDoctorHome = (limitInput) => {
     return new Promise(async (resolve, reject) => {
@@ -52,18 +55,32 @@ let getAllDoctors = () => {
 let saveDetailInfoDoctor = (inputData) => {
     return new Promise(async (resolve, reject) => {
         try {
-            if (!inputData.doctorId || !inputData.contentHTML || !inputData.contentMarkdown) {
+            if (!inputData.doctorId || !inputData.contentHTML || !inputData.contentMarkdown || !inputData.action) {
                 resolve({
                     errCode: 1,
                     errMessage: 'Missing parameter!'
                 })
             } else {
-                await db.Markdown.create({
-                    contentHTML: inputData.contentHTML,
-                    contentMarkdown: inputData.contentMarkdown,
-                    description: inputData.description,
-                    doctorId: inputData.doctorId
-                })
+                if (inputData.action === 'CREATE') {
+                    await db.Markdown.create({
+                        contentHTML: inputData.contentHTML,
+                        contentMarkdown: inputData.contentMarkdown,
+                        description: inputData.description,
+                        doctorId: inputData.doctorId
+                    })
+                } else if (inputData.action === 'EDIT') {
+                    let doctorMarkdown = await db.Markdown.findOne({
+                        where: { doctorId: inputData.doctorId },
+                        raw: false
+                    })
+
+                    if (doctorMarkdown) {
+                        doctorMarkdown.contentHTML = inputData.contentHTML
+                        doctorMarkdown.contentMarkdown = inputData.contentMarkdown
+                        doctorMarkdown.description = inputData.description
+                        await doctorMarkdown.save()
+                    }
+                }
                 resolve({
                     errCode: 0,
                     errMessage: "Save info doctor success!"
@@ -95,7 +112,7 @@ let getDetailDoctorById = (inputId) => {
                     include: [
                         {
                             model: db.Markdown,
-                            attributes: ['description', 'contentHTML', 'contentMarkDown']
+                            attributes: ['description', 'contentHTML', 'contentMarkdown']
                         },
                         { model: db.Allcode, as: 'positionData', attributes: ['valueEn', 'valueVi'] },
                     ],
@@ -103,12 +120,109 @@ let getDetailDoctorById = (inputId) => {
                     nest: true
                 })
 
-                if(data && data.image) {
+                if (data && data.image) {
                     data.image = new Buffer(data.image, 'base64').toString('binary')
                 }
 
-                if(!data) data = {}
+                if (!data) data = {}
 
+                resolve({
+                    errCode: 0,
+                    data: data
+                })
+            }
+        } catch (e) {
+            reject(e)
+        }
+    })
+}
+
+let bulkCreateSchedule = (data) => {
+    return new Promise(async (resolve, reject) => {
+        try {
+            if (!data.arrSchedule || !data.doctorId || !data.formatedDate) {
+                resolve({
+                    errCode: 1,
+                    errMessage: 'Missing riquired parameter!'
+                })
+            } else {
+                let schedule = data.arrSchedule
+                
+                if(!schedule) {
+                    console.log('schedule is empty!')
+                } else {
+                    schedule = schedule.map(item => {
+                        item.maxNumber = MAX_NUMBER_SCHEDULE
+                        return item
+                    })
+                }
+                
+                console.log('check dataaaaaaaaa schedule: ', schedule)
+
+                let existing = await db.Schedule.findAll(
+                    {
+                        where: { doctorId: data.doctorId, date: data.formatedDate },
+                        attributes: ['timeType', 'date', 'doctorId', 'maxNumber'],
+                        raw: true
+                    }
+                );
+                console.log('check before fortmat existing========================: ', existing)
+
+                if(!existing) {
+                    console.log('existing is empty!')
+                } else {
+                    console.log('check inside existing formart: ', existing)
+                    existing = existing.map(item => {
+                        item.date = new Date(item.date).getTime()
+                        console.log('check item.date: ', item.date) 
+                        return item
+                    })
+                }
+
+                console.log('check after fortmat========================: ', existing)
+
+                let toCreate = _.differenceWith(schedule, existing, (a, b) => {
+                    console.log('a: ', a.timeType, 'b: ', b.timeType)
+                    console.log('a: ', a.date, 'b: ', b.date)
+                    return a.timeType === b.timeType && a.date === b.date
+                })
+
+                if (toCreate && toCreate.length > 0) {
+                    await db.Schedule.bulkCreate(toCreate)
+                }
+
+                console.log('check after========================: ', toCreate)
+
+                resolve({
+                    errCode: 0,
+                    errMessage: 'OK'
+                })
+
+
+            }
+        } catch (e) {
+            reject(e)
+        }
+    })
+}
+
+let getScheduleByDate = (doctorId, date) => {
+    return new Promise(async (resolve, reject) => {
+        try {
+            if(!doctorId || !date) {
+                resolve({
+                    errCode: 1,
+                    errMessage: 'Missing required parameter!'
+                })
+            } else {
+                let data = await db.Schedule.findAll({
+                    where: {
+                        doctorId: doctorId,
+                        date: date
+                    }
+                })
+
+                if(!data) data = []
                 resolve({
                     errCode: 0,
                     data: data
@@ -125,4 +239,6 @@ module.exports = {
     getAllDoctors: getAllDoctors,
     saveDetailInfoDoctor: saveDetailInfoDoctor,
     getDetailDoctorById: getDetailDoctorById,
+    bulkCreateSchedule: bulkCreateSchedule,
+    getScheduleByDate: getScheduleByDate
 }
