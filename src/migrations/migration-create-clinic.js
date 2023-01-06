@@ -3,7 +3,7 @@
 module.exports = {
   async up(queryInterface, Sequelize) {
     await queryInterface.createTable('clinics', {
-   
+
       id: {
         allowNull: false,
         autoIncrement: true,
@@ -16,11 +16,14 @@ module.exports = {
       name: {
         type: Sequelize.STRING
       },
-      description: {
+      descriptionHTML: {
+        type: Sequelize.TEXT
+      },
+      descriptionMarkdown: {
         type: Sequelize.TEXT
       },
       image: {
-        type: Sequelize.STRING
+        type: Sequelize.BLOB('long')
       },
       createdAt: {
         allowNull: false,
