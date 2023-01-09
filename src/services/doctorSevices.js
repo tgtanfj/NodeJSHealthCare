@@ -2,6 +2,7 @@ import db from '../models/index'
 require('dotenv').config()
 import _ from 'lodash';
 import { asIs } from 'sequelize';
+import emailService from './emailService';
 
 const MAX_NUMBER_SCHEDULE = process.env.MAX_NUMBER_SCHEDULE
 
@@ -233,7 +234,7 @@ let bulkCreateSchedule = (data) => {
                         attributes: ['timeType', 'date', 'doctorId', 'maxNumber'],
                         raw: true
                     }
-                );
+                )
 
                 //check different
                 let toCreate = _.differenceWith(schedule, existing, (a, b) => {
@@ -409,6 +410,9 @@ let getListPaitentForDoctor = (doctorId, date) => {
                                 { model: db.Allcode, as: 'genderData', attributes: ['valueEn', 'valueVi'] },
                             ]
                         },
+                        {
+                            model: db.Allcode, as: 'timeTypeDataPatient', attributes: ['valueEn', 'valueVi']
+                        }
                     ],
                     raw: false,
                     nest: true
@@ -425,6 +429,42 @@ let getListPaitentForDoctor = (doctorId, date) => {
     })
 }
 
+let sendRemedy = (data) => {
+    return new Promise(async (resolve, reject) => {
+        try {
+            if (!data.email || !data.doctorId || !data.patientId) {
+                resolve({
+                    errCode: 1,
+                    errMessage: 'Missing required parameter!'
+                })
+            } else {
+                //update patient status
+                let appointment = await db.Booking.findOne({
+                    where: {
+                        doctorId: data.doctorId,
+                        patientId: data.patientId,
+                        timeType: data.timeType,
+                        statusId: 'S2'
+                    },
+                    raw: false,
+                })
+                if (appointment) {
+                    appointment.statusId = 'S3'
+                    await appointment.save()
+                }
+                //send email remedy
+                await emailService.sendAttachment(data)
+                resolve({
+                    errCode: 0,
+                    errMessage: 'OK'
+                })
+            } 
+        } catch (e) {
+            reject(e)
+        }
+    })
+}
+
 module.exports = {
     getTopDoctorHome: getTopDoctorHome,
     getAllDoctors: getAllDoctors,
@@ -434,5 +474,6 @@ module.exports = {
     getScheduleByDate: getScheduleByDate,
     getExtraInfoDoctorById: getExtraInfoDoctorById,
     getProfileDoctorById: getProfileDoctorById,
-    getListPaitentForDoctor: getListPaitentForDoctor
+    getListPaitentForDoctor: getListPaitentForDoctor,
+    sendRemedy: sendRemedy
 }
